@@ -33,7 +33,7 @@ test('tree grid smoke: загрузка, порядок колонок, нуме
 
   const headerTexts = await page.locator('.ag-header-cell-text').allTextContents()
   expect(headerTexts.map((text) => text.trim()).filter(Boolean)).toEqual([
-    '№ п/п',
+    '№ п\\п',
     'Категория',
     'Наименование',
   ])

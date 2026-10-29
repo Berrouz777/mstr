@@ -75,7 +75,7 @@ describe('TreeGrid', () => {
     const instance = HeaderComponent ? new HeaderComponent() : null
     instance?.init?.()
     const headerElement = instance?.getGui()
-    expect(headerElement?.textContent?.trim()).toBe('№ п/п')
+    expect(headerElement?.textContent?.trim()).toBe('№ п\\п')
   })
 
   it('по умолчанию раскрывает только первый root item', () => {

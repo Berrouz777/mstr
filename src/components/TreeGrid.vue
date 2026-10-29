@@ -36,7 +36,7 @@ class RowNumberHeaderComponent implements IHeaderComp {
 
   public init(): void {
     this.gui.className = 'ag-header-cell-text'
-    this.gui.textContent = '№ п/п'
+    this.gui.textContent = '№ п\\п'
   }
 
   public getGui(): HTMLElement {
