@@ -1,0 +1,105 @@
+@import 'ag-grid-community/styles/ag-grid.css';
+@import 'ag-grid-community/styles/ag-theme-alpine.css';
+
+:root {
+  font-family:
+    Inter,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    sans-serif;
+  color: #222;
+  background: #ffffff;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+#app {
+  min-height: 100vh;
+}
+
+.page {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 18px 12px 20px;
+}
+
+.page__title {
+  margin: 0 0 10px;
+  font-size: 40px;
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.page__grid-wrap {
+  background: #f2f2f2;
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.tree-grid {
+  width: 100%;
+}
+
+.tree-grid__table {
+  width: 100%;
+  height: 610px;
+  border: 1px solid #e1e1e1;
+  border-radius: 6px;
+  overflow: hidden;
+  --ag-background-color: #ffffff;
+  --ag-header-background-color: #ffffff;
+  --ag-odd-row-background-color: #ffffff;
+  --ag-row-hover-color: transparent;
+  --ag-header-column-separator-display: block;
+  --ag-header-column-separator-color: #e5e5e5;
+  --ag-borders: none;
+  --ag-border-color: #e5e5e5;
+  --ag-row-border-color: #ececec;
+  --ag-header-column-resize-handle-display: none;
+  --ag-header-height: 44px;
+  --ag-row-height: 44px;
+  --ag-cell-horizontal-padding: 10px;
+}
+
+.tree-grid__table .ag-header-cell-text {
+  font-size: 27px;
+  font-weight: 600;
+}
+
+.tree-grid__table .ag-cell {
+  font-size: 31px;
+}
+
+.tree-grid__table .ag-group-expanded,
+.tree-grid__table .ag-group-contracted {
+  color: #484848;
+}
+
+@media (max-width: 960px) {
+  .page__title {
+    font-size: 26px;
+  }
+
+  .tree-grid__table {
+    height: 520px;
+    --ag-header-height: 38px;
+    --ag-row-height: 38px;
+  }
+
+  .tree-grid__table .ag-header-cell-text {
+    font-size: 18px;
+  }
+
+  .tree-grid__table .ag-cell {
+    font-size: 18px;
+  }
+}
