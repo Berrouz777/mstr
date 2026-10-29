@@ -1,0 +1,44 @@
+{
+  "name": "mstroy",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "npm run typecheck && vite build",
+    "typecheck": "vue-tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.node.json",
+    "lint": "eslint .",
+    "format:check": "prettier --check .",
+    "test": "vitest run --passWithNoTests",
+    "test:performance": "vitest run \"tests/performance/**/*.test.ts\" --passWithNoTests",
+    "test:e2e": "playwright test --pass-with-no-tests"
+  },
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "dependencies": {
+    "ag-grid-community": "^33.3.2",
+    "ag-grid-enterprise": "^33.3.2",
+    "ag-grid-vue3": "^33.3.2",
+    "vue": "^3.5.22"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "@playwright/test": "^1.56.1",
+    "@types/node": "^24.9.0",
+    "@vitejs/plugin-vue": "^6.0.1",
+    "@vue/test-utils": "^2.4.6",
+    "@vue/tsconfig": "^0.8.1",
+    "eslint": "^9.39.1",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-vue": "^10.5.1",
+    "globals": "^16.4.0",
+    "jsdom": "^27.0.1",
+    "prettier": "^3.6.2",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.46.2",
+    "vite": "^7.1.11",
+    "vitest": "^3.2.4",
+    "vue-tsc": "^3.1.1"
+  }
+}
