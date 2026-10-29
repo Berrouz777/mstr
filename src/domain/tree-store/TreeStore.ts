@@ -57,18 +57,27 @@ export class TreeStore<T extends TreeStoreItem> implements TreeStoreContract<T> 
 
     const result: T[] = []
     const stack: TreeStoreId[] = []
-    this.pushChildrenReverse(id, stack)
+    const visited = new Set<TreeStoreId>()
+    const queued = new Set<TreeStoreId>()
+    this.pushChildrenReverse(id, stack, visited, queued)
 
     while (stack.length > 0) {
       const currentId = stack.pop() as TreeStoreId
+      queued.delete(currentId)
+
+      if (visited.has(currentId)) {
+        continue
+      }
+
       const record = this.recordsById.get(currentId)
 
       if (!record) {
         continue
       }
 
+      visited.add(currentId)
       result.push(this.cloneItem(record.item))
-      this.pushChildrenReverse(currentId, stack)
+      this.pushChildrenReverse(currentId, stack, visited, queued)
     }
 
     return result
@@ -110,6 +119,14 @@ export class TreeStore<T extends TreeStoreItem> implements TreeStoreContract<T> 
       throw new TypeError(`Duplicate id "${String(item.id)}"`)
     }
 
+    if (item.parent === item.id) {
+      throw new TypeError(`Item "${String(item.id)}" cannot be parent of itself`)
+    }
+
+    if (item.parent !== null && this.wouldCreateCycle(item.id, item.parent)) {
+      throw new TypeError(`Adding "${String(item.id)}" would create a cycle`)
+    }
+
     const clonedItem = this.cloneItem(item)
 
     this.recordsById.set(clonedItem.id, {
@@ -131,11 +148,18 @@ export class TreeStore<T extends TreeStoreItem> implements TreeStoreContract<T> 
 
     const toRemove: TreeStoreId[] = []
     const stack: TreeStoreId[] = [id]
+    const visited = new Set<TreeStoreId>()
 
     while (stack.length > 0) {
       const currentId = stack.pop() as TreeStoreId
+
+      if (visited.has(currentId)) {
+        continue
+      }
+
+      visited.add(currentId)
       toRemove.push(currentId)
-      this.pushChildrenReverse(currentId, stack)
+      this.pushChildrenReverse(currentId, stack, visited)
     }
 
     this.detachFromParent(id, target.parent)
@@ -159,7 +183,9 @@ export class TreeStore<T extends TreeStoreItem> implements TreeStoreContract<T> 
     delete patchRecord.id
 
     const hasParentInPatch = Object.prototype.hasOwnProperty.call(patchRecord, 'parent')
-    const nextParent = hasParentInPatch ? (patchRecord.parent as TreeStoreParentId | undefined) : current.parent
+    const nextParent = hasParentInPatch
+      ? (patchRecord.parent as TreeStoreParentId | undefined)
+      : current.parent
 
     if (hasParentInPatch) {
       if (nextParent === undefined) {
@@ -291,17 +317,32 @@ export class TreeStore<T extends TreeStoreItem> implements TreeStoreContract<T> 
     return result
   }
 
-  private pushChildrenReverse(parentId: TreeStoreParentId, stack: TreeStoreId[]): void {
+  private pushChildrenReverse(
+    parentId: TreeStoreParentId,
+    stack: TreeStoreId[],
+    blockedIds?: ReadonlySet<TreeStoreId>,
+    queuedIds?: Set<TreeStoreId>,
+  ): void {
     const bucket = this.bucketsByParent.get(parentId)
 
     if (!bucket || bucket.lastChild === null) {
       return
     }
 
+    const seenSiblings = new Set<TreeStoreId>()
     let currentId: SiblingLink = bucket.lastChild
 
-    while (currentId !== null) {
-      stack.push(currentId)
+    while (currentId !== null && !seenSiblings.has(currentId)) {
+      seenSiblings.add(currentId)
+
+      const isBlocked = blockedIds?.has(currentId) ?? false
+      const isQueued = queuedIds?.has(currentId) ?? false
+
+      if (!isBlocked && !isQueued) {
+        stack.push(currentId)
+        queuedIds?.add(currentId)
+      }
+
       const currentRecord = this.recordsById.get(currentId)
       currentId = currentRecord?.prevSibling ?? null
     }
@@ -389,30 +430,35 @@ export class TreeStore<T extends TreeStoreItem> implements TreeStoreContract<T> 
   }
 
   private assertAcyclic(parentById: ReadonlyMap<TreeStoreId, TreeStoreParentId>): void {
-    const done = new Set<TreeStoreId>()
+    const stateById = new Map<TreeStoreId, 0 | 1 | 2>()
 
     for (const startId of parentById.keys()) {
-      if (done.has(startId)) {
+      if ((stateById.get(startId) ?? 0) === 2) {
         continue
       }
 
-      const localPath = new Set<TreeStoreId>()
-      const visitedInChain: TreeStoreId[] = []
+      const path: TreeStoreId[] = []
       let cursor: TreeStoreId | null = startId
 
-      while (cursor !== null && parentById.has(cursor) && !done.has(cursor)) {
-        if (localPath.has(cursor)) {
+      while (cursor !== null && parentById.has(cursor)) {
+        const state = stateById.get(cursor) ?? 0
+
+        if (state === 1) {
           throw new TypeError('Cycle detected in tree items')
         }
+
+        if (state === 2) {
+          break
+        }
+
+        stateById.set(cursor, 1)
+        path.push(cursor)
 
         const parent: TreeStoreParentId | undefined = parentById.get(cursor)
 
         if (parent === cursor) {
           throw new TypeError('Self-referenced parent is not allowed')
         }
-
-        localPath.add(cursor)
-        visitedInChain.push(cursor)
 
         if (parent === undefined || parent === null) {
           break
@@ -421,13 +467,17 @@ export class TreeStore<T extends TreeStoreItem> implements TreeStoreContract<T> 
         cursor = parent
       }
 
-      for (const id of visitedInChain) {
-        done.add(id)
+      for (const id of path) {
+        stateById.set(id, 2)
       }
     }
   }
 
   private assertValidItem(item: T): void {
+    if (item === null || typeof item !== 'object') {
+      throw new TypeError('item must be a non-null object')
+    }
+
     if (typeof item.id !== 'string' && typeof item.id !== 'number') {
       throw new TypeError('id must be string or number')
     }
@@ -436,7 +486,11 @@ export class TreeStore<T extends TreeStoreItem> implements TreeStoreContract<T> 
       throw new TypeError('parent cannot be undefined')
     }
 
-    if (item.parent !== null && typeof item.parent !== 'string' && typeof item.parent !== 'number') {
+    if (
+      item.parent !== null &&
+      typeof item.parent !== 'string' &&
+      typeof item.parent !== 'number'
+    ) {
       throw new TypeError('parent must be string, number or null')
     }
   }

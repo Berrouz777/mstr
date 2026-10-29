@@ -65,6 +65,39 @@ describe('TreeStore', () => {
     expect(allChildren[allChildren.length - 1]?.id).toBe(depth - 1)
   })
 
+  it('getAllChildren имеет visited-defense и завершается даже при внутреннем цикле', () => {
+    const store = new TreeStore<TestItem>([
+      { id: 'root', parent: null, title: 'root' },
+      { id: 'a', parent: 'root', title: 'a' },
+      { id: 'b', parent: 'a', title: 'b' },
+    ])
+    const hacked = store as unknown as {
+      recordsById: Map<
+        string | number,
+        { prevSibling: string | number | null; nextSibling: string | number | null }
+      >
+      bucketsByParent: Map<
+        string | number | null,
+        { firstChild: string | number | null; lastChild: string | number | null }
+      >
+    }
+    const a = hacked.recordsById.get('a')
+    const b = hacked.recordsById.get('b')
+
+    expect(a).toBeDefined()
+    expect(b).toBeDefined()
+
+    if (a && b) {
+      a.prevSibling = 'b'
+      b.prevSibling = 'a'
+      hacked.bucketsByParent.set('root', { firstChild: 'a', lastChild: 'b' })
+    }
+
+    const result = store.getAllChildren('root')
+
+    expect(result.map((item) => item.id)).toEqual(['a', 'b'])
+  })
+
   it('возвращает цепочку родителей [self, parent, ..., root]', () => {
     const store = new TreeStore<TestItem>(createItems())
 
@@ -113,6 +146,33 @@ describe('TreeStore', () => {
     expect(store.getChildren(null).map((item) => item.id)).toEqual([1, '1', 'new-root'])
 
     expect(() => store.addItem({ id: 5, parent: null, title: 'duplicate' })).toThrow(TypeError)
+  })
+
+  it('addItem отклоняет самоссылку атомарно и без уведомления', () => {
+    const store = new TreeStore<TestItem>(createItems())
+    const listener = vi.fn()
+    store.subscribe(listener)
+
+    expect(() => store.addItem({ id: 'self', parent: 'self', title: 'self' })).toThrow(TypeError)
+    expect(store.getItem('self')).toBeUndefined()
+    expect(store.getAll().map((item) => item.id)).toEqual([1, '1', 2, '2', 3, 4])
+    expect(listener).not.toHaveBeenCalled()
+  })
+
+  it('addItem отклоняет цикл с orphan child, указывающим на добавляемый id', () => {
+    const store = new TreeStore<TestItem>([
+      { id: 'child', parent: 'future', title: 'orphan-child' },
+      { id: 'root', parent: null, title: 'root' },
+    ])
+    const listener = vi.fn()
+    store.subscribe(listener)
+
+    expect(() => store.addItem({ id: 'future', parent: 'child', title: 'future' })).toThrow(
+      TypeError,
+    )
+    expect(store.getItem('future')).toBeUndefined()
+    expect(store.getAll().map((item) => item.id)).toEqual(['child', 'root'])
+    expect(listener).not.toHaveBeenCalled()
   })
 
   it('updateItem делает merge, сохраняет id и поддерживает перенос parent в конец нового списка', () => {
