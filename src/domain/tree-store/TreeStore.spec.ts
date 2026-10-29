@@ -45,6 +45,26 @@ describe('TreeStore', () => {
     expect(store.getAllChildren('unknown')).toEqual([])
   })
 
+  it('выполняет итеративный preorder для глубокой цепочки без переполнения стека', () => {
+    const depth = 12_000
+    const items: TestItem[] = []
+
+    for (let index = 0; index < depth; index += 1) {
+      items.push({
+        id: index,
+        parent: index === 0 ? null : index - 1,
+        title: `node-${index}`,
+      })
+    }
+
+    const store = new TreeStore<TestItem>(items)
+    const allChildren = store.getAllChildren(0)
+
+    expect(allChildren).toHaveLength(depth - 1)
+    expect(allChildren[0]?.id).toBe(1)
+    expect(allChildren[allChildren.length - 1]?.id).toBe(depth - 1)
+  })
+
   it('возвращает цепочку родителей [self, parent, ..., root]', () => {
     const store = new TreeStore<TestItem>(createItems())
 
@@ -64,6 +84,23 @@ describe('TreeStore', () => {
     ).toThrow(TypeError)
 
     expect(store.getAll().map((item) => item.id)).toEqual([1, '1', 2, '2', 3, 4])
+  })
+
+  it('setItems отклоняет циклы и самоссылки атомарно', () => {
+    const store = new TreeStore<TestItem>(createItems())
+    const listener = vi.fn()
+    store.subscribe(listener)
+
+    expect(() =>
+      store.setItems([
+        { id: 'a', parent: 'b', title: 'a' },
+        { id: 'b', parent: 'a', title: 'b' },
+      ]),
+    ).toThrow(TypeError)
+
+    expect(() => store.setItems([{ id: 'x', parent: 'x', title: 'x' }])).toThrow(TypeError)
+    expect(store.getAll().map((item) => item.id)).toEqual([1, '1', 2, '2', 3, 4])
+    expect(listener).not.toHaveBeenCalled()
   })
 
   it('addItem добавляет в конец sibling-ов и бросает TypeError на duplicate id', () => {
@@ -98,6 +135,68 @@ describe('TreeStore', () => {
     expect(store.getChildren('root-b').map((item) => item.id)).toEqual(['b-1', 'a-1'])
   })
 
+  it('updateItem с parent null переносит узел в корни в конец', () => {
+    const store = new TreeStore<TestItem>([
+      { id: 'root-a', parent: null, title: 'root-a' },
+      { id: 'root-b', parent: null, title: 'root-b' },
+      { id: 'a-1', parent: 'root-a', title: 'a-1' },
+    ])
+
+    store.updateItem('a-1', { parent: null })
+
+    expect(store.getChildren('root-a')).toEqual([])
+    expect(store.getChildren(null).map((item) => item.id)).toEqual(['root-a', 'root-b', 'a-1'])
+  })
+
+  it('updateItem при том же parent сохраняет позицию среди siblings', () => {
+    const store = new TreeStore<TestItem>([
+      { id: 'root', parent: null, title: 'root' },
+      { id: 'a', parent: 'root', title: 'a' },
+      { id: 'b', parent: 'root', title: 'b' },
+      { id: 'c', parent: 'root', title: 'c' },
+    ])
+
+    store.updateItem('b', { parent: 'root', title: 'b2' })
+
+    expect(store.getChildren('root').map((item) => item.id)).toEqual(['a', 'b', 'c'])
+    expect(store.getItem('b')?.title).toBe('b2')
+  })
+
+  it('updateItem отклоняет parent undefined атомарно', () => {
+    const store = new TreeStore<TestItem>(createItems())
+    const listener = vi.fn()
+    store.subscribe(listener)
+
+    expect(() => store.updateItem(2, { parent: undefined })).toThrow(TypeError)
+    expect(store.getItem(2)?.parent).toBe(1)
+    expect(store.getChildren(1).map((item) => item.id)).toEqual([2, '2'])
+    expect(listener).not.toHaveBeenCalled()
+  })
+
+  it('updateItem запрещает parent под самого себя и потомка', () => {
+    const store = new TreeStore<TestItem>([
+      { id: 'root', parent: null, title: 'root' },
+      { id: 'child', parent: 'root', title: 'child' },
+      { id: 'leaf', parent: 'child', title: 'leaf' },
+    ])
+    const listener = vi.fn()
+    store.subscribe(listener)
+
+    expect(() => store.updateItem('child', { parent: 'child' })).toThrow(TypeError)
+    expect(() => store.updateItem('child', { parent: 'leaf' })).toThrow(TypeError)
+
+    expect(store.getAllParents('leaf').map((item) => item.id)).toEqual(['leaf', 'child', 'root'])
+    expect(listener).not.toHaveBeenCalled()
+  })
+
+  it('updateItem игнорирует id в patch и не меняет identity', () => {
+    const store = new TreeStore<TestItem>([{ id: 'node', parent: null, title: 'before' }])
+    store.updateItem('node', { id: 'other-id', title: 'after' } as Partial<TestItem>)
+
+    expect(store.getItem('node')).toEqual({ id: 'node', parent: null, title: 'after' })
+    expect(store.getItem('other-id')).toBeUndefined()
+  })
+
   it('updateItem/removeItem для неизвестного id являются no-op', () => {
     const store = new TreeStore<TestItem>(createItems())
 
@@ -116,6 +215,23 @@ describe('TreeStore', () => {
     expect(store.getItem(3)).toBeUndefined()
     expect(store.getChildren(1).map((item) => item.id)).toEqual(['2'])
     expect(store.getAll().map((item) => item.id)).toEqual([1, '1', '2', 4])
+  })
+
+  it('removeItem уведомляет один раз при удалении subtree', () => {
+    const store = new TreeStore<TestItem>([
+      { id: 'root', parent: null, title: 'root' },
+      { id: 'a', parent: 'root', title: 'a' },
+      { id: 'b', parent: 'root', title: 'b' },
+      { id: 'a1', parent: 'a', title: 'a1' },
+      { id: 'a2', parent: 'a', title: 'a2' },
+    ])
+    const listener = vi.fn()
+    store.subscribe(listener)
+
+    store.removeItem('a')
+
+    expect(listener).toHaveBeenCalledTimes(1)
+    expect(store.getChildren('root').map((item) => item.id)).toEqual(['b'])
   })
 
   it('subscribe уведомляет один раз на успешную мутацию и поддерживает unsubscribe', () => {
@@ -138,11 +254,31 @@ describe('TreeStore', () => {
     expect(listener).toHaveBeenCalledTimes(4)
   })
 
-  it('возвращаемые массивы из get* и входной массив setItems защищают индексы от внешней мутации', () => {
+  it('subscribe не уведомляет при duplicate/errors и unsubscribe идемпотентен', () => {
+    const store = new TreeStore<TestItem>(createItems())
+    const listener = vi.fn()
+    const unsubscribe = store.subscribe(listener)
+
+    expect(() => store.addItem({ id: 1, parent: null, title: 'dup' })).toThrow(TypeError)
+    expect(() => store.setItems([{ id: 'x', parent: 'x', title: 'cycle' }])).toThrow(TypeError)
+    expect(() => store.updateItem(1, { parent: undefined })).toThrow(TypeError)
+
+    expect(listener).not.toHaveBeenCalled()
+
+    unsubscribe()
+    unsubscribe()
+    store.addItem({ id: 'after', parent: null, title: 'after' })
+
+    expect(listener).not.toHaveBeenCalled()
+  })
+
+  it('клонирует items на входе/выходе и защищает индексы от внешней мутации полей', () => {
     const source = createItems()
     const store = new TreeStore<TestItem>()
 
     store.setItems(source)
+    expect(source[0]).toBeDefined()
+    source[0]!.title = 'mutated-externally'
     source.push({ id: 999, parent: null, title: 'external' })
 
     const all = store.getAll()
@@ -154,10 +290,30 @@ describe('TreeStore', () => {
     children.pop()
     descendants.pop()
     parents.pop()
+    expect(all[0]).toBeDefined()
+    all[0]!.title = 'mutated-return'
+    const root = store.getItem(1)
+
+    if (root) {
+      root.title = 'mutated-single-item'
+    }
 
     expect(store.getAll().map((item) => item.id)).toEqual([1, '1', 2, '2', 3, 4])
+    expect(store.getItem(1)?.title).toBe('root-number')
     expect(store.getChildren(1).map((item) => item.id)).toEqual([2, '2'])
     expect(store.getAllChildren(1).map((item) => item.id)).toEqual([2, 3, '2'])
     expect(store.getAllParents(3).map((item) => item.id)).toEqual([3, 2, 1])
+  })
+
+  it('компилируется с обычным interface без index signature', () => {
+    interface PlainItem {
+      id: string | number
+      parent: string | number | null
+      label: string
+    }
+
+    const store = new TreeStore<PlainItem>([{ id: 'p1', parent: null, label: 'plain' }])
+
+    expect(store.getItem('p1')?.label).toBe('plain')
   })
 })

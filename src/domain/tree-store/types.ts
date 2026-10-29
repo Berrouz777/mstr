@@ -5,7 +5,6 @@ export type TreeStoreParentId = TreeStoreId | null
 export interface TreeStoreItem {
   id: TreeStoreId
   parent: TreeStoreParentId
-  [key: string]: unknown
 }
 
 export type TreeStoreItemPatch<T extends TreeStoreItem> = Partial<Omit<T, 'id'>>
