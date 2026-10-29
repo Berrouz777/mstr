@@ -7,41 +7,56 @@ import {
   type ColDef,
   type GetDataPath,
   type GridOptions,
+  type IHeaderComp,
   type IsGroupOpenByDefaultParams,
-  type RowGroupOpenedEvent,
-  type ValueGetterParams,
+  type RowNumbersOptions,
 } from 'ag-grid-community'
-import { RowGroupingModule } from 'ag-grid-enterprise'
-import type { TreeGridRow } from './treeGridRows.js'
+import { RowGroupingModule, RowNumbersModule, TreeDataModule } from 'ag-grid-enterprise'
+import { toTypedTreeGridId, type TreeGridRow } from './treeGridRows.js'
 
-ModuleRegistry.registerModules([ClientSideRowModelModule, RowGroupingModule])
+ModuleRegistry.registerModules([
+  ClientSideRowModelModule,
+  RowGroupingModule,
+  TreeDataModule,
+  RowNumbersModule,
+])
 
 const props = defineProps<{
   rowData: TreeGridRow[]
   loading: boolean
 }>()
 
+const isPending = computed(() => props.loading || props.rowData.length === 0)
 const firstRootKey = computed(
   () => props.rowData.find((row) => row.path.length === 1)?.path[0] ?? null,
 )
 
-const columnDefs: ColDef<TreeGridRow>[] = [
-  {
-    headerName: '№ п/п',
-    colId: 'rowNumber',
-    width: 84,
-    minWidth: 84,
-    maxWidth: 84,
-    sortable: false,
-    filter: false,
-    editable: false,
-    suppressHeaderMenuButton: true,
-    valueGetter: (params: ValueGetterParams<TreeGridRow>) => {
-      const rowIndex = params.node?.rowIndex
+class RowNumberHeaderComponent implements IHeaderComp {
+  private readonly gui: HTMLSpanElement = document.createElement('span')
 
-      return typeof rowIndex === 'number' ? rowIndex + 1 : ''
-    },
-  },
+  public init(): void {
+    this.gui.className = 'ag-header-cell-text'
+    this.gui.textContent = '№ п/п'
+  }
+
+  public getGui(): HTMLElement {
+    return this.gui
+  }
+
+  public refresh(): boolean {
+    return false
+  }
+}
+
+const rowNumbers: RowNumbersOptions = {
+  minWidth: 92,
+  width: 92,
+  maxWidth: 92,
+  resizable: false,
+  headerComponent: RowNumberHeaderComponent,
+}
+
+const columnDefs: ColDef<TreeGridRow>[] = [
   {
     headerName: 'Наименование',
     field: 'label',
@@ -72,10 +87,14 @@ const getDataPath: GetDataPath<TreeGridRow> = (data) => data.path
 
 const gridOptions: GridOptions<TreeGridRow> = {
   treeData: true,
+  theme: 'legacy',
+  domLayout: 'autoHeight',
   animateRows: false,
+  rowNumbers,
   suppressCellFocus: true,
   suppressContextMenu: true,
   ensureDomOrder: true,
+  getRowId: (params) => toTypedTreeGridId(params.data.id),
   defaultColDef: {
     sortable: false,
     filter: false,
@@ -88,17 +107,11 @@ const gridOptions: GridOptions<TreeGridRow> = {
 
     return params.rowNode.level === 0 && key !== null && params.rowNode.key === key
   },
-  onRowGroupOpened: (event: RowGroupOpenedEvent<TreeGridRow>) => {
-    event.api.refreshCells({
-      columns: ['rowNumber'],
-      force: true,
-    })
-  },
 }
 </script>
 
 <template>
-  <div class="tree-grid">
+  <div class="tree-grid" :class="{ 'tree-grid--pending': isPending }">
     <AgGridVue
       class="ag-theme-alpine tree-grid__table"
       :row-data="rowData"

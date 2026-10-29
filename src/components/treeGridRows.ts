@@ -11,7 +11,7 @@ export type TreeGridRow = {
 
 type IdPart = string
 
-function toTypedPart(id: TreeStoreItem['id']): IdPart {
+export function toTypedTreeGridId(id: TreeStoreItem['id']): IdPart {
   return typeof id === 'number' ? `n:${id}` : `s:${id}`
 }
 
@@ -39,7 +39,7 @@ export function buildTreeGridRows<T extends TreeStoreItem & { label: string }>(
     let current: T | undefined = item
 
     while (current) {
-      path.push(toTypedPart(current.id))
+      path.push(toTypedTreeGridId(current.id))
 
       if (current.parent === null) {
         break

@@ -1,6 +1,6 @@
 import { defineComponent } from 'vue'
 import { mount } from '@vue/test-utils'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import TreeGrid from './TreeGrid.vue'
 import type { TreeGridRow } from './treeGridRows.js'
 
@@ -12,6 +12,7 @@ const AgGridVueStub = defineComponent({
     columnDefs: { type: Array, required: true },
     autoGroupColumnDef: { type: Object, required: true },
     gridOptions: { type: Object, required: true },
+    theme: { type: [String, Object], required: false, default: undefined },
   },
   template: '<div data-testid="ag-grid-stub" />',
 })
@@ -41,48 +42,40 @@ describe('TreeGrid', () => {
     expect(grid.props('loading')).toBe(true)
   })
 
-  it('конфигурирует колонки строго по требованиям', () => {
+  it('конфигурирует колонки в порядке Категория → Наименование через auto group', () => {
     const wrapper = mountGrid()
     const grid = wrapper.findComponent(AgGridVueStub)
-    const columnDefs = grid.props('columnDefs') as Array<{
-      headerName: string
-      colId?: string
-      valueGetter?: (params: { node: { rowIndex: number } }) => number
-    }>
+    const columnDefs = grid.props('columnDefs') as Array<{ headerName: string; field?: string }>
     const autoGroupColumnDef = grid.props('autoGroupColumnDef') as { headerName: string }
 
-    expect(columnDefs.map((column) => column.headerName)).toEqual(['№ п/п', 'Наименование'])
+    expect(columnDefs.map((column) => column.headerName)).toEqual(['Наименование'])
+    expect(columnDefs[0]?.field).toBe('label')
     expect(autoGroupColumnDef.headerName).toBe('Категория')
-    expect(typeof columnDefs[0]?.valueGetter).toBe('function')
   })
 
-  it('нумерация видимых строк = node.rowIndex + 1', () => {
-    const wrapper = mountGrid()
-    const grid = wrapper.findComponent(AgGridVueStub)
-    const columnDefs = grid.props('columnDefs') as Array<{
-      colId?: string
-      valueGetter?: (params: { node: { rowIndex: number } }) => number
-    }>
-    const indexColumn = columnDefs.find((column) => column.colId === 'rowNumber')
-
-    expect(indexColumn?.valueGetter?.({ node: { rowIndex: 0 } })).toBe(1)
-    expect(indexColumn?.valueGetter?.({ node: { rowIndex: 6 } })).toBe(7)
-  })
-
-  it('refresh номера строк при expand/collapse', () => {
+  it('включает встроенную нумерацию через rowNumbers module api', () => {
     const wrapper = mountGrid()
     const grid = wrapper.findComponent(AgGridVueStub)
     const gridOptions = grid.props('gridOptions') as {
-      onRowGroupOpened?: (params: { api: { refreshCells: (args: unknown) => void } }) => void
+      rowNumbers?: {
+        minWidth?: number
+        width?: number
+        headerComponent?: new () => {
+          init?: () => void
+          getGui: () => { textContent?: string | null }
+        }
+      }
     }
-    const refreshCells = vi.fn()
 
-    gridOptions.onRowGroupOpened?.({ api: { refreshCells } })
+    expect(gridOptions.rowNumbers).toBeTruthy()
+    expect(gridOptions.rowNumbers?.minWidth).toBeGreaterThanOrEqual(80)
+    expect(gridOptions.rowNumbers?.width).toBeGreaterThanOrEqual(84)
 
-    expect(refreshCells).toHaveBeenCalledWith({
-      columns: ['rowNumber'],
-      force: true,
-    })
+    const HeaderComponent = gridOptions.rowNumbers?.headerComponent
+    const instance = HeaderComponent ? new HeaderComponent() : null
+    instance?.init?.()
+    const headerElement = instance?.getGui()
+    expect(headerElement?.textContent?.trim()).toBe('№ п/п')
   })
 
   it('по умолчанию раскрывает только первый root item', () => {
@@ -112,5 +105,45 @@ describe('TreeGrid', () => {
         rowNode: { level: 1, key: 'n:10' },
       }),
     ).toBe(false)
+  })
+
+  it('задаёт row id с type-prefixed id для сохранения состояния раскрытия', () => {
+    const wrapper = mountGrid()
+    const grid = wrapper.findComponent(AgGridVueStub)
+    const gridOptions = grid.props('gridOptions') as {
+      getRowId?: (params: { data: TreeGridRow }) => string
+    }
+
+    expect(
+      gridOptions.getRowId?.({ data: { id: 1, label: 'A', category: 'Элемент', path: ['n:1'] } }),
+    ).toBe('n:1')
+    expect(
+      gridOptions.getRowId?.({
+        data: { id: '1', label: 'B', category: 'Элемент', path: ['s:1'] },
+      }),
+    ).toBe('s:1')
+  })
+
+  it('использует legacy theme и domLayout autoHeight', () => {
+    const wrapper = mountGrid()
+    const grid = wrapper.findComponent(AgGridVueStub)
+    const gridOptions = grid.props('gridOptions') as {
+      theme?: string
+      domLayout?: string
+    }
+
+    expect(gridOptions.theme).toBe('legacy')
+    expect(gridOptions.domLayout).toBe('autoHeight')
+  })
+
+  it('добавляет min-height только в loading/empty состоянии', async () => {
+    const wrapper = mountGrid({ loading: true, rowData: [] })
+    expect(wrapper.find('.tree-grid').classes()).toContain('tree-grid--pending')
+
+    await wrapper.setProps({
+      loading: false,
+      rowData: [{ id: 1, label: 'x', category: 'Элемент', path: ['n:1'] }],
+    })
+    expect(wrapper.find('.tree-grid').classes()).not.toContain('tree-grid--pending')
   })
 })
