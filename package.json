@@ -6,11 +6,11 @@
   "scripts": {
     "dev": "vite",
     "build": "npm run typecheck && vite build",
-    "typecheck": "vue-tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.node.json",
+    "typecheck": "vue-tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.test.json",
     "lint": "eslint .",
     "format:check": "prettier --check .",
-    "test": "vitest run --passWithNoTests",
-    "test:performance": "vitest run \"tests/performance/**/*.test.ts\" --passWithNoTests",
+    "test": "vitest run --dir tests/unit --passWithNoTests",
+    "test:performance": "vitest run --dir tests/performance --passWithNoTests",
     "test:e2e": "playwright test --pass-with-no-tests"
   },
   "engines": {

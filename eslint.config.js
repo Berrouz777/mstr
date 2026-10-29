@@ -12,21 +12,40 @@ export default [
       'playwright-report/**',
       'test-results/**',
       'node_modules/**',
+      '**/*.json',
     ],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   ...pluginVue.configs['flat/recommended'],
   {
-    files: ['**/*.{ts,vue}'],
+    files: ['**/*.vue'],
     languageOptions: {
+      parserOptions: {
+        parser: tseslint.parser,
+      },
       globals: {
         ...globals.browser,
-        ...globals.node,
       },
     },
     rules: {
       'vue/multi-word-component-names': 'off',
+    },
+  },
+  {
+    files: ['src/**/*.ts'],
+    languageOptions: {
+      globals: {
+        ...globals.browser,
+      },
+    },
+  },
+  {
+    files: ['eslint.config.js', 'vite.config.ts', 'playwright.config.ts', 'tests/**/*.ts'],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+      },
     },
   },
   prettierConfig,
